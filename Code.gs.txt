@@ -45,7 +45,7 @@ const CONFIG = {
 
 
 /** GitHub Pages theke data pull korar jonno optional key (khali = open) */
-const DASH_KEY = "";
+const DASH_KEY = "mushfiqur@03";
 
 /** Web app entry point + JSON/JSONP API
  *  - Normal URL           -> HTML dashboard (Apps Script web app)
