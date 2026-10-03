@@ -1,0 +1,467 @@
+/**
+ * ============================================================
+ *  AEFML - LIVE OT DASHBOARD  (Hours + Amount + Month Compare)
+ *  Akij Resource Limited | Operational Excellence (OPEX)
+ * ============================================================
+ *  Apps Script file name : Code.gs      <- paste this whole file
+ *  Apps Script HTML file : Index.html   <- paste the HTML file
+ *
+ *  Deploy:  Deploy > New deployment > Web app
+ *           Execute as: Me   |   Who has access: Anyone
+ * ============================================================
+ */
+
+/* ============================================================
+ *  ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+ *  ★★★   MONTHLY CONFIG — EDIT ONLY THIS BLOCK   ★★★
+ *  ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+ * ------------------------------------------------------------
+ *  WHY: Notun month ashle normally KICHU edit korte hobe na.
+ *       AUTO_DETECT = true  hole code nijei latest 2 ta month
+ *       tab khuje ber kore (SummaryAEFML(HR)-MMM pattern dekhe).
+ *
+ *  KOBE MANUALLY EDIT KORTE HOBE:
+ *    1) Tab name-er pattern badle gele, OR
+ *    2) Tumi force korte chao kon 2 ta month compare hobe.
+ *       -> Tokhon AUTO_DETECT = false koro ebong niche thaka
+ *          EXACT tab name gulo lekho.
+ *
+ *  Tab name HUBOHU likhte hobe (space & bracket soho), e.g.:
+ *     SummaryAEFML(HR)-OCT
+ *     SummaryAEFML(Amount)-OCT
+ * ============================================================ */
+const CONFIG = {
+  AUTO_DETECT : true,                            // ★ true = kichu edit lagbe na
+
+  // ---- manual override (AUTO_DETECT=false holei byabohar hobe) ----
+  CURR_HR_TAB  : "SummaryAEFML(HR)-OCT",         // ★ notun month = ekhane
+  CURR_AMT_TAB : "SummaryAEFML(Amount)-OCT",
+  PREV_HR_TAB  : "SummaryAEFML(HR)-SEP",
+  PREV_AMT_TAB : "SummaryAEFML(Amount)-SEP",
+
+  SHEET_ID : "17idgsnmIusg8Gg2cIJIuZoB1eVyV9U0ttyxZQXemzDM"
+};
+/* ================= END OF MONTHLY CONFIG ================= */
+
+
+/** GitHub Pages theke data pull korar jonno optional key (khali = open) */
+const DASH_KEY = "";
+
+/** Web app entry point + JSON/JSONP API
+ *  - Normal URL           -> HTML dashboard (Apps Script web app)
+ *  - URL?data=1           -> raw JSON
+ *  - URL?data=1&callback=X -> JSONP (GitHub Pages er jonno, CORS lagbe na)
+ */
+function doGet(e) {
+  var p = (e && e.parameter) ? e.parameter : {};
+  if (p.data === "1") {
+    if (DASH_KEY && p.key !== DASH_KEY) return out_(p.callback, { error: "Unauthorized" });
+    var payload;
+    try { payload = getOTData(); } catch (err) { payload = { error: String(err) }; }
+    return out_(p.callback, payload);
+  }
+  return HtmlService.createHtmlOutputFromFile("Index")
+    .setTitle("AEFML | OT Dashboard")
+    .addMetaTag("viewport", "width=device-width, initial-scale=1")
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function out_(callback, obj) {
+  var json = JSON.stringify(obj);
+  if (callback) {
+    return ContentService.createTextOutput(callback + "(" + json + ");")
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
+}
+
+/** Robust: Date object, Sheets serial number, ba string -> Date */
+function toDate(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  if (typeof v === "number") {
+    if (v > 20000 && v < 80000) {                 // Google Sheets serial
+      var ms = (v - 25569) * 86400000 + 43200000; // +12h UTC-safe
+      var d = new Date(ms);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    return null;
+  }
+  var d2 = new Date(String(v).trim());
+  return isNaN(d2.getTime()) ? null : d2;
+}
+
+function add(a, b) { return a + b; }
+function zero31() { var a = []; for (var i = 0; i < 31; i++) a.push(0); return a; }
+function dom(d) { return parseInt(Utilities.formatDate(d, Session.getScriptTimeZone(), "d"), 10); }
+
+function startDateOf(sheet) {
+  var lastCol = Math.min(sheet.getLastColumn(), 40);
+  var h = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  for (var c = 0; c < h.length; c++) { var d = toDate(h[c]); if (d) return d; }
+  return null;
+}
+
+/** Ek ta summary tab (HR ba Amount) ke parse kore */
+function readSummary(sheet) {
+  if (!sheet) return null;
+  var vals = sheet.getDataRange().getValues();
+  if (!vals || !vals.length) return null;
+  var header = vals[0], dateCols = [], dates = [];
+  for (var c = 1; c < header.length; c++) {
+    var d = toDate(header[c]);
+    if (d) { dateCols.push(c); dates.push(d); }
+  }
+  if (!dateCols.length) return null;
+  var sections = [], totalDaily = null;
+  for (var r = 1; r < vals.length; r++) {
+    var name = String(vals[r][0] || "").trim();
+    if (!name) continue;
+    var low = name.toLowerCase();
+    var daily = dateCols.map(function (c) { var n = parseFloat(vals[r][c]); return isNaN(n) ? 0 : n; });
+    if (low === "total") { totalDaily = daily; continue; }
+    if (low === "tracing") continue;
+    sections.push({ name: name, daily: daily });
+  }
+  if (!totalDaily) {
+    totalDaily = dateCols.map(function (_, i) {
+      return sections.reduce(function (s, x) { return s + x.daily[i]; }, 0);
+    });
+  }
+  return { dates: dates, sections: sections, totalDaily: totalDaily };
+}
+
+/** Ek month er (HR + Amount) combined data */
+function buildMonth(ss, hrName, amtName) {
+  if (!hrName) return null;
+  var hrSheet = ss.getSheetByName(hrName);
+  if (!hrSheet) return null;
+  var hr = readSummary(hrSheet);
+  if (!hr || !hr.dates.length) return null;
+
+  var amtSheet = amtName ? ss.getSheetByName(amtName) : null;
+  var amt = amtSheet ? readSummary(amtSheet) : null;
+  var amtBy = {};
+  if (amt) amt.sections.forEach(function (s) { amtBy[s.name.trim().toLowerCase()] = s.daily; });
+
+  var hours = zero31(), amount = zero31();
+  var sections = [];
+  hr.sections.forEach(function (s) {
+    var key = s.name.trim().toLowerCase();
+    var av = amtBy[key] || [];
+    var sh = zero31(), sa = zero31(), hTot = 0, aTot = 0;
+    hr.dates.forEach(function (d, idx) {
+      var k = dom(d) - 1;
+      var hv = parseFloat(s.daily[idx]) || 0;
+      var avv = parseFloat(av[idx]) || 0;
+      if (k >= 0 && k < 31) { sh[k] += hv; sa[k] += avv; }
+      hTot += hv; aTot += avv;
+    });
+    for (var i = 0; i < 31; i++) { hours[i] += sh[i]; amount[i] += sa[i]; }
+    sections.push({ name: s.name.trim(), hours: hTot, amount: aTot, dailyHours: sh, dailyAmount: sa });
+  });
+
+  // Amount tab e extra section thakle add koro
+  if (amt) {
+    amt.sections.forEach(function (s) {
+      var key = s.name.trim().toLowerCase();
+      if (hr.sections.some(function (x) { return x.name.trim().toLowerCase() === key; })) return;
+      var sa = zero31(), aTot = 0;
+      amt.dates.forEach(function (d, idx) {
+        var k = dom(d) - 1; var avv = parseFloat(s.daily[idx]) || 0;
+        if (k >= 0 && k < 31) sa[k] += avv;
+        aTot += avv;
+      });
+      sections.push({ name: s.name.trim(), hours: 0, amount: aTot, dailyHours: zero31(), dailyAmount: sa });
+    });
+  }
+
+  return {
+    label: Utilities.formatDate(hr.dates[0], Session.getScriptTimeZone(), "MMM yyyy"),
+    monthStart: hr.dates[0],
+    sections: sections,
+    dailyHours: hours,
+    dailyAmount: amount,
+    totalHours: hours.reduce(add, 0),
+    totalAmount: amount.reduce(add, 0)
+  };
+}
+
+/** "Production Data" tab theke daily production (MT) map */
+function readProduction(ss) {
+  var sh = ss.getSheetByName("Production Data");
+  if (!sh) return {};
+  var v = sh.getDataRange().getValues();
+  var map = {};
+  for (var r = 1; r < v.length; r++) {
+    var d = toDate(v[r][0]);
+    if (!d) continue;
+    var n = parseFloat(v[r][1]);
+    if (isNaN(n)) continue;
+    map[Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd")] = n;
+  }
+  return map;
+}
+
+/** AUTO_DETECT logic — latest 2 ta month tab ber kore */
+function pickTabs(ss) {
+  if (!CONFIG.AUTO_DETECT) {
+    return { currHr: CONFIG.CURR_HR_TAB, currAmt: CONFIG.CURR_AMT_TAB,
+             prevHr: CONFIG.PREV_HR_TAB, prevAmt: CONFIG.PREV_AMT_TAB };
+  }
+  var hrs = [];
+  ss.getSheets().forEach(function (sh) {
+    var m = sh.getName().match(/^SummaryAEFML\(HR\)-([A-Za-z]{3})/);
+    if (!m) return;
+    var sd = startDateOf(sh);
+    hrs.push({ name: sh.getName(), code: m[1].toUpperCase(), key: sd ? sd.getTime() : 0 });
+  });
+  if (!hrs.length) return { error: "Kono 'SummaryAEFML(HR)-MMM' tab paoa jay nai — tab name check koro." };
+  hrs.sort(function (a, b) { return a.key - b.key; });
+  var curr = hrs[hrs.length - 1];
+  var prev = hrs.length > 1 ? hrs[hrs.length - 2] : null;
+  function amtFor(code) {
+    var found = null;
+    ss.getSheets().forEach(function (sh) {
+      if (sh.getName().toUpperCase().indexOf("SUMMARYAEFML(AMOUNT)-" + code) === 0) found = sh.getName();
+    });
+    return found;
+  }
+  return {
+    currHr: curr.name, currAmt: amtFor(curr.code),
+    prevHr: prev ? prev.name : null, prevAmt: prev ? amtFor(prev.code) : null
+  };
+}
+
+/** OT reason text -> fixed category (Pareto jonno) */
+function categorizeReason(txt) {
+  var s = String(txt || "").toLowerCase();
+  if (!s.trim()) return "Not specified";
+  if (/man\s*power|manpower|shortage/.test(s)) return "Manpower shortage";
+  if (/shut\s*down|shutdown/.test(s)) return "Shutdown / Planned job";
+  if (/break\s*down|breakdown|repair|maintenance/.test(s)) return "Breakdown / Maintenance";
+  if (/load(ing)?|vehicle|truck|delivery/.test(s)) return "Loading / Vehicle";
+  if (/clean|wash|sanitation/.test(s)) return "Cleaning";
+  if (/pack|bag|sack/.test(s)) return "Packing";
+  if (/stock|inventory|store/.test(s)) return "Inventory / Stock";
+  if (/quality|test|lab|\bqc\b/.test(s)) return "Quality / Lab";
+  if (/supervis|patrol|guard|security|duty/.test(s)) return "Security duty";
+  if (/production|demand|output|target|crush/.test(s)) return "Production demand";
+  if (/fabricat|weld|fitter|electric/.test(s)) return "Fabrication / Electrical";
+  return "Other";
+}
+
+/** Detail OT tabs scan -> reason Pareto + unique employee count (per month) */
+function scanDetails(ss, monthStarts, sectionSet) {
+  var buckets = monthStarts.map(function () { return { reasons: {}, emp: {} }; });
+  var tabs = ss.getSheets().filter(function (sh) {
+    var n = sh.getName();
+    return /^OT-/.test(n) && !/report|export|dashboard/i.test(n);
+  });
+  tabs.forEach(function (sh) {
+    var lastRow = sh.getLastRow();
+    if (lastRow < 2) return;
+    var lastCol = Math.min(sh.getLastColumn(), 12);
+    var vals = sh.getRange(1, 1, lastRow, lastCol).getValues();
+    for (var r = 1; r < vals.length; r++) {
+      var d = toDate(vals[r][0]);
+      if (!d) continue;
+      var bi = -1;
+      for (var mi = 0; mi < monthStarts.length; mi++) {
+        var ms = monthStarts[mi];
+        var me = new Date(ms.getFullYear(), ms.getMonth() + 1, 0, 23, 59, 59);
+        if (d >= ms && d <= me) { bi = mi; break; }
+      }
+      if (bi < 0) continue;
+      var sbu = String(vals[r][5] || "").trim().toUpperCase();
+      if (sbu === "ACCL" || sbu === "APFIL") continue;      // dashboard = AEFML + AEDML scope
+      var sec = String(vals[r][4] || "").trim().toLowerCase();
+      if (sectionSet && !sectionSet[sec]) continue;
+      var hrs = parseFloat(vals[r][8]) || 0;
+      var amt = parseFloat(vals[r][10]) || 0;
+      var cat = categorizeReason(vals[r][11]);
+      var b = buckets[bi];
+      if (!b.reasons[cat]) b.reasons[cat] = { cat: cat, hours: 0, amount: 0, count: 0 };
+      b.reasons[cat].hours += hrs; b.reasons[cat].amount += amt; b.reasons[cat].count += 1;
+      var enrol = String(vals[r][1] || "").trim();
+      if (enrol) b.emp[enrol] = 1;
+    }
+  });
+  return buckets.map(function (b) {
+    var list = Object.keys(b.reasons).map(function (k) { return b.reasons[k]; })
+      .sort(function (a, c) { return c.hours - a.hours; });
+    return { reasons: list, employees: Object.keys(b.emp).length };
+  });
+}
+
+/** Main — dashboard ke data dey */
+function getOTData() {
+  try {
+    var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+    var pair = pickTabs(ss);
+    if (pair.error) return { error: pair.error };
+
+    var curr = buildMonth(ss, pair.currHr, pair.currAmt);
+    if (!curr) return { error: "Current month tab (" + pair.currHr + ") read korte pari nai." };
+    var prev = pair.prevHr ? buildMonth(ss, pair.prevHr, pair.prevAmt) : null;
+
+    // section union
+    var names = [];
+    function addName(n) {
+      var k = n.trim().toLowerCase();
+      if (!names.some(function (x) { return x.trim().toLowerCase() === k; })) names.push(n.trim());
+    }
+    curr.sections.forEach(function (s) { addName(s.name); });
+    if (prev) prev.sections.forEach(function (s) { addName(s.name); });
+
+    var rows = names.map(function (n) {
+      var k = n.trim().toLowerCase();
+      var cs = curr.sections.filter(function (s) { return s.name.trim().toLowerCase() === k; })[0];
+      var ps = prev ? prev.sections.filter(function (s) { return s.name.trim().toLowerCase() === k; })[0] : null;
+      return {
+        name: n,
+        ch: cs ? cs.hours : 0, ca: cs ? cs.amount : 0,
+        ph: ps ? ps.hours : 0, pa: ps ? ps.amount : 0,
+        cdh: cs ? cs.dailyHours : zero31(), cda: cs ? cs.dailyAmount : zero31(),
+        pdh: ps ? ps.dailyHours : zero31(), pda: ps ? ps.dailyAmount : zero31()
+      };
+    }).filter(function (r) { return (r.ch + r.ca + r.ph + r.pa) > 0; });
+    rows.sort(function (a, b) { return (b.ch + b.ph) - (a.ch + a.ph); });
+
+    // MTD days in current month
+    var mtd = 0;
+    for (var i = 0; i < 31; i++) { if (curr.dailyHours[i] > 0 || curr.dailyAmount[i] > 0) mtd = i + 1; }
+    if (mtd < 1) mtd = 1;
+
+    var prevH = prev ? prev.totalHours : 0, prevA = prev ? prev.totalAmount : 0;
+    var prevMtdH = prev ? prev.dailyHours.slice(0, mtd).reduce(add, 0) : 0;
+    var prevMtdA = prev ? prev.dailyAmount.slice(0, mtd).reduce(add, 0) : 0;
+    var momH = prevMtdH ? ((curr.totalHours - prevMtdH) / prevMtdH * 100) : 0;
+    var momA = prevMtdA ? ((curr.totalAmount - prevMtdA) / prevMtdA * 100) : 0;
+
+    // insights
+    var byH = rows.slice().sort(function (a, b) { return b.ch - a.ch; });
+    var byA = rows.slice().sort(function (a, b) { return b.ca - a.ca; });
+    var topH = byH[0] || { name: "-", ch: 0 };
+    var topA = byA[0] || { name: "-", ca: 0 };
+    var top2 = (byH[0] ? byH[0].ch : 0) + (byH[1] ? byH[1].ch : 0);
+    var top2Pct = curr.totalHours ? (top2 / curr.totalHours * 100) : 0;
+
+    var peakIdx = 0, peakVal = -1;
+    curr.dailyHours.forEach(function (v, idx) { if (v > peakVal) { peakVal = v; peakIdx = idx; } });
+
+    var weekendH = 0;
+    for (var i2 = 0; i2 < mtd; i2++) {
+      var dd = new Date(curr.monthStart.getTime()); dd.setDate(i2 + 1);
+      var wd = dd.getDay();
+      if (wd === 5 || wd === 6) weekendH += curr.dailyHours[i2];
+    }
+    var weekendPct = curr.totalHours ? (weekendH / curr.totalHours * 100) : 0;
+
+    function delta(r) { if (!r.ph) return null; return ((r.ch - r.ph) / r.ph * 100); }
+    var risers = rows.filter(function (r) { return r.ph > 0 && r.ch > r.ph; })
+      .sort(function (a, b) { return (b.ch - b.ph) - (a.ch - a.ph); }).slice(0, 4)
+      .map(function (r) { return { name: r.name, ch: r.ch, ph: r.ph, pct: delta(r) }; });
+    var fallers = rows.filter(function (r) { return r.ph > 0 && r.ch < r.ph; })
+      .sort(function (a, b) { return (a.ch - a.ph) - (b.ch - b.ph); }).slice(0, 4)
+      .map(function (r) { return { name: r.name, ch: r.ch, ph: r.ph, pct: delta(r) }; });
+
+    var avgRate = curr.totalHours ? (curr.totalAmount / curr.totalHours) : 0;
+
+    // production (MT) per day-of-month for both months
+    var prodMap = readProduction(ss);
+    function prodForMonth(m) {
+      var arr = zero31();
+      if (!m) return arr;
+      var ms = m.monthStart.getMonth();
+      for (var p = 0; p < 31; p++) {
+        var pd = new Date(m.monthStart.getTime()); pd.setDate(p + 1);
+        if (pd.getMonth() !== ms) continue;
+        var pk = Utilities.formatDate(pd, Session.getScriptTimeZone(), "yyyy-MM-dd");
+        arr[p] = prodMap[pk] || 0;
+      }
+      return arr;
+    }
+    var prodCurr = prodForMonth(curr);
+    var prodPrev = prev ? prodForMonth(prev) : zero31();
+
+    // ---- month-end projection ----
+    var DIM = new Date(curr.monthStart.getFullYear(), curr.monthStart.getMonth() + 1, 0).getDate();
+    var projHours = mtd > 0 ? (curr.totalHours / mtd) * DIM : 0;
+    var projAmount = mtd > 0 ? (curr.totalAmount / mtd) * DIM : 0;
+
+    // ---- cost / OT efficiency per MT ----
+    var totalProd = prodCurr.reduce(add, 0);
+    var prevTotalProd = prodPrev.reduce(add, 0);
+    var costPerMt = totalProd > 0 ? (curr.totalAmount / totalProd) : 0;
+    var hoursPerMt = totalProd > 0 ? (curr.totalHours / totalProd) : 0;
+    var prevCostPerMt = prevTotalProd > 0 ? (prev.totalAmount / prevTotalProd) : 0;
+    var prevHoursPerMt = prevTotalProd > 0 ? (prev.totalHours / prevTotalProd) : 0;
+
+    // ---- reason Pareto + OT intensity (detail tabs scan) ----
+    var sectionSet = {};
+    rows.forEach(function (r) { sectionSet[r.name.trim().toLowerCase()] = 1; });
+    var scans = [{ reasons: [], employees: 0 }, { reasons: [], employees: 0 }];
+    try {
+      var monthStarts = prev ? [curr.monthStart, prev.monthStart] : [curr.monthStart];
+      scans = scanDetails(ss, monthStarts, sectionSet);
+    } catch (e) { /* scan fail hole dashboard cholbe */ }
+    var scan = scans[0];
+    var empCount = scan.employees;
+    var avgOtPerEmp = empCount > 0 ? (curr.totalHours / empCount) : 0;
+    var estRegular = empCount * 8 * mtd;
+    var reliancePct = (estRegular + curr.totalHours) > 0
+      ? (curr.totalHours / (estRegular + curr.totalHours) * 100) : 0;
+
+    return {
+      updated: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd MMM yyyy, HH:mm"),
+      currLabel: curr.label,
+      prevLabel: prev ? prev.label : "",
+      mtdDays: mtd,
+      hasPrev: !!prev,
+      currDailyHours: curr.dailyHours,
+      currDailyAmount: curr.dailyAmount,
+      prevDailyHours: prev ? prev.dailyHours : zero31(),
+      prevDailyAmount: prev ? prev.dailyAmount : zero31(),
+      rows: rows,
+      prodCurr: prodCurr,
+      prodPrev: prodPrev,
+      projections: {
+        daysInMonth: DIM, mtdDays: mtd,
+        projHours: projHours, projAmount: projAmount
+      },
+      intensity: {
+        employees: empCount,
+        avgOtPerEmployee: avgOtPerEmp,
+        reliancePct: reliancePct,
+        costPerMt: costPerMt,
+        hoursPerMt: hoursPerMt,
+        prevCostPerMt: prevCostPerMt,
+        prevHoursPerMt: prevHoursPerMt,
+        totalProd: totalProd,
+        prevTotalProd: prevTotalProd
+      },
+      reasonPareto: scan.reasons,
+      reasonParetoPrev: (scans[1] ? scans[1].reasons : []),
+      totals: {
+        currH: curr.totalHours, currA: curr.totalAmount,
+        prevH: prevH, prevA: prevA, prevMtdH: prevMtdH, prevMtdA: prevMtdA,
+        momH: momH, momA: momA, avgRate: avgRate
+      },
+      insights: {
+        topH: { name: topH.name, hours: topH.ch, pct: curr.totalHours ? (topH.ch / curr.totalHours * 100) : 0 },
+        topA: { name: topA.name, amount: topA.ca, pct: curr.totalAmount ? (topA.ca / curr.totalAmount * 100) : 0 },
+        top2Pct: top2Pct,
+        peakDay: peakVal > 0 ? peakIdx + 1 : 0,
+        peakVal: peakVal,
+        weekendPct: weekendPct,
+        risers: risers,
+        fallers: fallers,
+        dataNote: "MTD: " + mtd + " day(s) of " + curr.label
+      },
+      tabs: { currHr: pair.currHr, currAmt: pair.currAmt, prevHr: pair.prevHr, prevAmt: pair.prevAmt }
+    };
+  } catch (e) {
+    return { error: String(e) };
+  }
+}

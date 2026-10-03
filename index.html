@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',sans-serif;background:#f0f2f5;color:#333}
+    .topbar{background:linear-gradient(135deg,#1e3a5f,#0d47a1);padding:14px 24px;display:flex;justify-content:space-between;align-items:center;color:#fff;position:sticky;top:0;z-index:99}
+    .topbar h1{font-size:18px;font-weight:700;letter-spacing:.5px}
+    .topbar-right{display:flex;align-items:center;gap:12px}
+    .badge{background:#ffca28;color:#1e3a5f;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700}
+    .refresh-btn{background:#ffca28;color:#1e3a5f;border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer}
+    .refresh-btn:hover{background:#ffd54f}
+    .refresh-btn:active{transform:scale(0.95)}
+    .hero{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;padding:16px 24px 8px}
+    .hero .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.06);text-align:center}
+    .hero .val{font-size:28px;font-weight:800;color:#1e3a5f;line-height:1.2}
+    .hero .lbl{font-size:11px;color:#888;margin-top:4px;letter-spacing:.5px}
+    .hero .sub{font-size:12px;color:#555;margin-top:4px}
+    .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;padding:8px 24px 16px}
+    .kpi{background:linear-gradient(135deg,#f7f9fc,#eef3fa);border:1px solid #e1e8f2;border-radius:10px;padding:12px;text-align:center}
+    .kpi .kval{font-size:20px;font-weight:800;color:#1565c0;line-height:1.2}
+    .kpi .klbl{font-size:10px;color:#7a8699;margin-top:4px;letter-spacing:.4px;text-transform:uppercase}
+    .kpi .ksub{font-size:11px;color:#999;margin-top:2px}
+    .up{color:#c62828;font-weight:700}
+    .down{color:#2e7d32;font-weight:700}
+    .flat{color:#777;font-weight:700}
+    .grid2{display:grid;grid-template-columns:2fr 1fr;gap:16px;padding:0 24px 16px}
+    .grid3{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:0 24px 16px}
+    .gridfull{display:grid;grid-template-columns:1fr;gap:16px;padding:0 24px 16px}
+    .panel{background:#fff;border-radius:12px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+    .panel h3{font-size:14px;color:#555;margin-bottom:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+    table{width:100%;border-collapse:collapse;font-size:12.5px}
+    th{background:#1e3a5f;color:#fff;padding:8px 9px;text-align:center;font-weight:600;font-size:12px}
+    td{padding:7px 9px;border-bottom:1px solid #eee;text-align:center}
+    tr:nth-child(even){background:#f8f9fb}
+    .tag{display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600}
+    .tag-red{background:#ffebee;color:#c62828}
+    .tag-orange{background:#fff3e0;color:#e65100}
+    .tag-green{background:#e8f5e9;color:#2e7d32}
+    .chart-box{height:330px}
+    .chart-box-lg{height:380px}
+    .chart-box-sm{height:300px}
+    .updated{text-align:center;padding:10px;color:#aaa;font-size:11px}
+    .insight-item{border-left:4px solid #ccc;padding:9px 13px;margin-bottom:10px;border-radius:0 8px 8px 0;background:#f8f9fb}
+    .insight-item.red{border-color:#e53935;background:#fff5f5}
+    .insight-item.orange{border-color:#ff9800;background:#fff8e1}
+    .insight-item.blue{border-color:#1565c0;background:#e3f2fd}
+    .insight-item.green{border-color:#2e7d32;background:#e8f5e9}
+    .insight-title{font-size:14px;font-weight:700;color:#1e3a5f}
+    .insight-sub{font-size:12px;color:#777;margin-top:2px}
+    .loading{text-align:center;padding:60px;color:#999;font-size:16px}
+    .tabsrc{font-size:10.5px;color:#aaa;text-align:center;padding:4px 10px 14px}
+    .viewtoggle{display:flex;justify-content:center;align-items:center;gap:10px;padding:0 24px 14px;font-size:13px;color:#555}
+    .viewtoggle button{border:1px solid #c7d2e0;background:#fff;color:#1e3a5f;padding:5px 16px;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer}
+    .viewtoggle button.active{background:#1e3a5f;color:#fff;border-color:#1e3a5f}
+  </style>
+  <script src="https://www.gstatic.com/charts/loader.js"></script>
+  <script>google.charts.load('current',{packages:['corechart']});</script>
+</head>
+<body>
+  <div class="topbar">
+    <h1>🔴 AEFML — Live OT Dashboard <span style="font-size:12px;font-weight:400;opacity:.85">| Hours + Amount + Root-Cause</span></h1>
+    <div class="topbar-right">
+      <span class="badge" id="badge-date">Loading...</span>
+      <button class="refresh-btn" onclick="refreshData()">🔄 Refresh</button>
+    </div>
+  </div>
+
+  <div id="loading" class="loading">⏳ Loading data...</div>
+  <div id="dashboard" style="display:none">
+
+  <!-- Hero Cards -->
+  <div class="hero">
+    <div class="card">
+      <div class="val" id="v-hours">-</div>
+      <div class="lbl" id="l-hours">TOTAL OT (HRS)</div>
+      <div class="sub" id="s-hours"></div>
+    </div>
+    <div class="card">
+      <div class="val" id="v-amt">-</div>
+      <div class="lbl" id="l-amt">TOTAL OT AMOUNT (BDT)</div>
+      <div class="sub" id="s-amt"></div>
+    </div>
+    <div class="card">
+      <div class="val" id="v-rate">-</div>
+      <div class="lbl">AVG OT RATE (BDT/HR)</div>
+      <div class="sub" id="s-rate"></div>
+    </div>
+    <div class="card">
+      <div class="val" id="v-top">-</div>
+      <div class="lbl">TOP OT SECTION</div>
+      <div class="sub" id="s-top"></div>
+    </div>
+  </div>
+
+  <!-- KPI Strip -->
+  <div class="kpis">
+    <div class="kpi"><div class="kval" id="k-projh">-</div><div class="klbl">Projected Month-End OT (hrs)</div><div class="ksub" id="k-projh-s"></div></div>
+    <div class="kpi"><div class="kval" id="k-proja">-</div><div class="klbl">Projected Month-End OT (BDT)</div><div class="ksub" id="k-proja-s"></div></div>
+    <div class="kpi"><div class="kval" id="k-int">-</div><div class="klbl">Avg OT / Employee (hrs)</div><div class="ksub" id="k-int-s"></div></div>
+    <div class="kpi"><div class="kval" id="k-rel">-</div><div class="klbl">OT Reliance % (approx)</div><div class="ksub" id="k-rel-s"></div></div>
+    <div class="kpi"><div class="kval" id="k-cpm">-</div><div class="klbl">OT Cost / MT (BDT)</div><div class="ksub" id="k-cpm-s"></div></div>
+  </div>
+
+  <!-- Row 1: Month-on-Month + Insights -->
+  <div class="grid2">
+    <div class="panel"><h3 id="cmp-h">📊 Month-on-Month — Daily Total OT Hours</h3><div id="c-compare" class="chart-box-lg"></div></div>
+    <div class="panel"><h3>💡 What stands out</h3><div id="insights"></div></div>
+  </div>
+
+  <!-- View toggle for daily charts -->
+  <div class="viewtoggle">
+    <span>Daily charts view:</span>
+    <button id="btn-prev" onclick="setView('prev')">Previous</button>
+    <button id="btn-curr" class="active" onclick="setView('curr')">Current</button>
+    <span id="view-note" style="color:#999;font-size:12px"></span>
+  </div>
+
+  <!-- Row 2: OT vs Production -->
+  <div class="gridfull">
+    <div class="panel"><h3 id="combo-h">📈 OT vs Production Input (MT)</h3><div id="c-combo" class="chart-box-lg"></div></div>
+  </div>
+
+  <!-- Row 3: Stacked by Section -->
+  <div class="gridfull">
+    <div class="panel"><h3 id="stack-h">📊 Daily OT by Section (Stacked)</h3><div id="c-stacked" class="chart-box-lg"></div></div>
+  </div>
+
+  <!-- Row 4: Pareto charts -->
+  <div class="grid3">
+    <div class="panel"><h3 id="rp-h">🎯 OT Reason Pareto (Root Cause)</h3><div id="c-reason" class="chart-box"></div></div>
+    <div class="panel"><h3 id="sp-h">📉 Section Pareto 80/20 (OT Hours)</h3><div id="c-pareto" class="chart-box"></div></div>
+  </div>
+
+  <!-- Row 5: Efficiency per MT -->
+  <div class="grid3">
+    <div class="panel"><h3 id="cpm-h">💰 OT Cost Efficiency (৳ per MT)</h3><div id="c-cpm" class="chart-box"></div></div>
+    <div class="panel"><h3 id="hpm-h">⚙️ OT Intensity (hrs per MT)</h3><div id="c-hpm" class="chart-box"></div></div>
+  </div>
+
+  <!-- Row 6: Section compare Hours + Amount -->
+  <div class="grid3">
+    <div class="panel"><h3 id="sech-h">🏢 Section-wise OT — Hours (compare)</h3><div id="c-sec-h" class="chart-box"></div></div>
+    <div class="panel"><h3 id="seca-h">💰 Section-wise OT — Amount BDT (compare)</h3><div id="c-sec-a" class="chart-box"></div></div>
+  </div>
+
+  <!-- Row 7: Daily amount compare -->
+  <div class="gridfull">
+    <div class="panel"><h3 id="daila-h">💵 Daily OT Amount BDT — Month vs Month</h3><div id="c-daily-a" class="chart-box-lg"></div></div>
+  </div>
+
+  <!-- Row 8: Donuts -->
+  <div class="grid3">
+    <div class="panel"><h3>🍩 Share of OT Hours (<span class="cur-lbl"></span>)</h3><div id="c-pie-h" class="chart-box-sm"></div></div>
+    <div class="panel"><h3>🍩 Share of OT Amount (<span class="cur-lbl"></span>)</h3><div id="c-pie-a" class="chart-box-sm"></div></div>
+  </div>
+
+  <!-- Row 9: Table -->
+  <div class="gridfull">
+    <div class="panel"><h3>📋 Section-Wise Detail (Hours + Amount + MoM)</h3>
+      <table>
+        <thead><tr>
+          <th>#</th><th>Section</th>
+          <th id="th-ph">Prev Hrs</th><th id="th-ch">Curr Hrs</th><th>Δ Hrs</th>
+          <th id="th-pa">Prev BDT</th><th id="th-ca">Curr BDT</th><th>Δ BDT</th><th>Status</th>
+        </tr></thead>
+        <tbody id="sec-table"></tbody>
+      </table>
+    </div>
+  </div>
+
+  </div><!-- /dashboard -->
+
+  <div class="tabsrc" id="tabsrc"></div>
+  <div class="updated" id="footer-updated"></div>
+
+<script>
+var dGlobal = null;
+var viewMonth = 'curr';
+var COL_PREV = '#90a4ae';
+var COL_CUR  = '#e53935';
+var COL_CUR2 = '#1565c0';
+var COL_CUM  = '#ff8f00';
+var STACK_COLORS = ['#1e3a5f','#1565c0','#1e88e5','#42a5f5','#90caf9','#bbdefb','#ffca28','#ff8a65','#ef5350','#ab47bc','#26a69a','#66bb6a','#8d6e63','#78909c','#e3f2fd'];
+var AUTO_MS = 5*60*1000;
+
+/* ============================================================
+ *  API CONFIG — GitHub Pages e host korle ekhane /exec URL bosao
+ *  (Apps Script web app e chalale lage na — auto detect hoy)
+ * ============================================================ */
+var API_URL = "";   // e.g. "https://script.google.com/macros/s/AKfy.../exec"
+var API_KEY = "";   // Apps Script er DASH_KEY set korle same key din
+
+function fetchData(onOk, onErr){
+  onErr = onErr || function(e){ onOk({error:(e&&e.message)||"load failed"}); };
+  if (window.google && google.script && google.script.run){
+    google.script.run.withSuccessHandler(onOk).withFailureHandler(onErr).getOTData();
+    return;
+  }
+  if (!API_URL){ onErr({message:"API_URL set kora hoy nai (GitHub Pages mode)."}); return; }
+  var cbName = "otcb_" + Math.floor(Math.random()*1e9);
+  var sc;
+  window[cbName] = function(data){
+    try { onOk(data); } finally {
+      try { delete window[cbName]; if (sc && sc.parentNode) sc.parentNode.removeChild(sc); } catch(_){}
+    }
+  };
+  sc = document.createElement("script");
+  sc.src = API_URL + (API_URL.indexOf("?")>=0?"&":"?") + "data=1" +
+           (API_KEY ? ("&key="+encodeURIComponent(API_KEY)) : "") +
+           "&callback=" + cbName;
+  sc.onerror = function(){ onErr({message:"Data load failed — API_URL check koro."}); };
+  document.body.appendChild(sc);
+}
+
+function n0(v){ return Math.round(v).toLocaleString(); }
+function pct(v){ return (v>=0?'+':'') + v.toFixed(1) + '%'; }
+function momClass(v){ return v>2?'up':(v<-2?'down':'flat'); }
+function lastNonZero(a){ var n=0; for(var i=0;i<a.length;i++){ if(a[i]>0) n=i+1; } return n; }
+
+function refreshData(){
+  document.getElementById('dashboard').style.display='none';
+  document.getElementById('loading').style.display='block';
+  document.getElementById('loading').textContent='🔄 Refreshing...';
+  fetchData(render, function(e){ document.getElementById('loading').textContent='❌ Error: '+e.message; });
+}
+
+google.charts.setOnLoadCallback(function(){
+  fetchData(function(d){
+    if(d.error){document.body.innerHTML='<h2 style="padding:40px;text-align:center;color:red">'+d.error+'</h2>';return;}
+    render(d);
+  }, function(e){ document.getElementById('loading').textContent='❌ Error: '+e.message; });
+
+  // Auto-refresh every 5 min (silent)
+  setInterval(function(){
+    if(document.getElementById('dashboard').style.display==='block'){
+      fetchData(function(d){ if(d && !d.error) render(d); }, function(){});
+    }
+  }, AUTO_MS);
+});
+
+function render(d){
+  dGlobal = d;
+  document.getElementById('loading').style.display='none';
+  document.getElementById('dashboard').style.display='block';
+
+  var t = d.totals, ins = d.insights, pr = d.projections, it = d.intensity;
+
+  // ---- Hero ----
+  document.getElementById('v-hours').textContent = n0(t.currH);
+  document.getElementById('l-hours').textContent = 'TOTAL OT HOURS — ' + d.currLabel.toUpperCase();
+  document.getElementById('s-hours').innerHTML = d.hasPrev
+    ? 'vs ' + d.prevLabel + ' same period ('+d.mtdDays+'d): <span class="'+momClass(t.momH)+'">'+pct(t.momH)+'</span>'
+    : 'No previous month to compare';
+  document.getElementById('v-amt').textContent = '৳' + n0(t.currA);
+  document.getElementById('l-amt').textContent = 'TOTAL OT AMOUNT — ' + d.currLabel.toUpperCase();
+  document.getElementById('s-amt').innerHTML = d.hasPrev
+    ? 'vs ' + d.prevLabel + ' same period: <span class="'+momClass(t.momA)+'">'+pct(t.momA)+'</span>'
+    : 'No previous month to compare';
+  document.getElementById('v-rate').textContent = '৳' + n0(t.avgRate);
+  document.getElementById('s-rate').textContent = 'Amount ÷ Hours (' + d.currLabel + ')';
+  document.getElementById('v-top').textContent = ins.topH.name;
+  document.getElementById('s-top').textContent = n0(ins.topH.hours) + ' hrs (' + ins.topH.pct.toFixed(1) + '% of total)';
+
+  // ---- KPI strip ----
+  document.getElementById('k-projh').textContent = n0(pr.projHours);
+  document.getElementById('k-projh-s').textContent = 'at current rate (' + pr.mtdDays + '/' + pr.daysInMonth + ' days)';
+  document.getElementById('k-proja').textContent = '৳' + n0(pr.projAmount);
+  document.getElementById('k-proja-s').textContent = 'projected full-month cost';
+  document.getElementById('k-int').textContent = it.avgOtPerEmployee.toFixed(1);
+  document.getElementById('k-int-s').textContent = it.employees + ' employees did OT';
+  document.getElementById('k-rel').textContent = it.reliancePct.toFixed(1) + '%';
+  document.getElementById('k-rel-s').textContent = 'OT hrs ÷ est. total hrs';
+  document.getElementById('k-cpm').textContent = it.totalProd > 0 ? ('৳' + n0(it.costPerMt)) : 'n/a';
+  document.getElementById('k-cpm-s').innerHTML = (d.hasPrev && it.prevCostPerMt > 0)
+    ? 'vs ' + d.prevLabel + ': <span class="'+momClass((it.costPerMt-it.prevCostPerMt)/it.prevCostPerMt*100)+'">'+pct((it.costPerMt-it.prevCostPerMt)/it.prevCostPerMt*100)+'</span>'
+    : 'production data pending';
+
+  document.getElementById('badge-date').textContent = d.currLabel + ' • Updated: ' + d.updated;
+  document.getElementById('footer-updated').textContent = 'Auto-refresh every 5 min  |  Last refreshed: ' + d.updated;
+  document.getElementById('cmp-h').textContent = '📊 Month-on-Month — Daily Total OT Hours (' + d.prevLabel + ' vs ' + d.currLabel + ')';
+  document.getElementById('view-note').textContent = 'Current = ' + d.currLabel + ' (MTD ' + d.mtdDays + 'd)';
+  var cLbls = document.querySelectorAll('.cur-lbl');
+  for (var z=0; z<cLbls.length; z++) cLbls[z].textContent = d.currLabel;
+  document.getElementById('th-ph').textContent = d.prevLabel + ' Hrs';
+  document.getElementById('th-ch').textContent = d.currLabel + ' Hrs';
+  document.getElementById('th-pa').textContent = d.prevLabel + ' BDT';
+  document.getElementById('th-ca').textContent = d.currLabel + ' BDT';
+  document.getElementById('rp-h').textContent = '🎯 OT Reason Pareto — ' + d.currLabel + ' (Root Cause)';
+  document.getElementById('sp-h').textContent = '📉 Section Pareto 80/20 — ' + d.currLabel + ' OT Hours';
+  document.getElementById('tabsrc').textContent =
+    'Source tabs → current: ' + d.tabs.currHr + ' + ' + (d.tabs.currAmt||'—') +
+    '  |  previous: ' + (d.tabs.prevHr||'—') + ' + ' + (d.tabs.prevAmt||'—');
+
+  // ---- Insights ----
+  var h = '';
+  h += '<div class="insight-item '+(ins.topH.pct>30?'red':'orange')+'"><div class="insight-title">'+
+       ins.topH.name+' = '+n0(ins.topH.hours)+' hrs ('+ins.topH.pct.toFixed(1)+'%)</div>'+
+       '<div class="insight-sub">Largest OT-hour driver in '+d.currLabel+'</div></div>';
+  if (d.reasonPareto && d.reasonPareto.length){
+    var r0 = d.reasonPareto[0];
+    var rTot = d.reasonPareto.reduce(function(s,x){return s+x.hours;},0);
+    h += '<div class="insight-item red"><div class="insight-title">Root cause #1: '+r0.cat+' = '+r0.hours.toFixed(0)+' hrs ('+
+         (rTot?(r0.hours/rTot*100).toFixed(1):'0')+'%)</div><div class="insight-sub">'+
+         r0.count+' records — address this first (Pareto)</div></div>';
+  }
+  if (d.hasPrev) {
+    h += '<div class="insight-item '+(t.momH>2?'red':(t.momH<-2?'green':'blue'))+'"><div class="insight-title">MoM Hours: '+pct(t.momH)+' | Amount: '+pct(t.momA)+'</div>'+
+         '<div class="insight-sub">vs '+d.prevLabel+' same '+d.mtdDays+'-day period</div></div>';
+  }
+  h += '<div class="insight-item '+(pr.projHours>t.currH*1.2?'orange':'blue')+'"><div class="insight-title">Month-end projection: '+n0(pr.projHours)+' hrs / ৳'+n0(pr.projAmount)+'</div>'+
+       '<div class="insight-sub">at current daily rate — act now if above plan</div></div>';
+  h += '<div class="insight-item blue"><div class="insight-title">Peak day: '+ins.peakDay+' '+d.currLabel+' ('+n0(ins.peakVal)+' hrs)</div>'+
+       '<div class="insight-sub">Highest single-day OT</div></div>';
+  h += '<div class="insight-item '+(ins.weekendPct>25?'orange':'blue')+'"><div class="insight-title">Weekend OT = '+ins.weekendPct.toFixed(1)+'%</div>'+
+       '<div class="insight-sub">Friday/Saturday share — manpower-planning signal</div></div>';
+  document.getElementById('insights').innerHTML = h;
+
+  // ---- Charts ----
+  drawCompare(d);
+  drawSectionH(d);
+  drawSectionA(d);
+  drawDailyA(d);
+  drawPies(d);
+  drawReasonPareto(d);
+  drawSectionPareto(d);
+  drawPerMt(d,'c-cpm', it.costPerMt, it.prevCostPerMt, '৳ per MT', '#f9a825');
+  drawPerMt(d,'c-hpm', it.hoursPerMt, it.prevHoursPerMt, 'hrs per MT', '#6a1b9a');
+  drawTable(d);
+  setView(viewMonth);
+}
+
+function drawCompare(d){
+  var lz = lastNonZero(d.prevDailyHours);
+  var N = Math.max(d.mtdDays, lz); if(N<1) N=1;
+  var rows = [['Day', d.prevLabel+' (hrs)', d.currLabel+' (hrs)']];
+  for (var i=0;i<N;i++){
+    rows.push([String(i+1), (i<lz? d.prevDailyHours[i]:null), (i<d.mtdDays? d.currDailyHours[i]:null)]);
+  }
+  var ch = new google.visualization.LineChart(document.getElementById('c-compare'));
+  ch.draw(google.visualization.arrayToDataTable(rows), {
+    colors:[COL_PREV, COL_CUR], lineWidth:2, pointSize:4,
+    legend:{position:'top',textStyle:{fontSize:11}},
+    vAxis:{title:'OT (hrs)',gridlines:{color:'#eee'}},
+    hAxis:{title:'Day of month',textStyle:{fontSize:10}},
+    chartArea:{left:60,right:30,top:45,width:'85%',height:'72%'}
+  });
+}
+
+function drawSectionH(d){
+  var rows = [['Section', d.prevLabel, d.currLabel]];
+  d.rows.slice(0,12).forEach(function(r){ rows.push([r.name, r.ph, r.ch]); });
+  var el = document.getElementById('c-sec-h');
+  if(!d.rows.length){ el.innerHTML='<p style="text-align:center;color:#999;padding:40px">No data</p>'; return; }
+  new google.visualization.ColumnChart(el).draw(google.visualization.arrayToDataTable(rows), {
+    colors:[COL_PREV, COL_CUR], bar:{groupWidth:'72%'},
+    legend:{position:'top',textStyle:{fontSize:11}},
+    vAxis:{title:'OT (hrs)',gridlines:{color:'#eee'}},
+    hAxis:{slantedText:true,slantedTextAngle:40,textStyle:{fontSize:9}}
+  });
+}
+
+function drawSectionA(d){
+  var rows = [['Section', d.prevLabel, d.currLabel]];
+  d.rows.slice(0,12).forEach(function(r){ rows.push([r.name, r.pa, r.ca]); });
+  var el = document.getElementById('c-sec-a');
+  if(!d.rows.length){ el.innerHTML='<p style="text-align:center;color:#999;padding:40px">No data</p>'; return; }
+  new google.visualization.ColumnChart(el).draw(google.visualization.arrayToDataTable(rows), {
+    colors:[COL_PREV, COL_CUR2], bar:{groupWidth:'72%'},
+    legend:{position:'top',textStyle:{fontSize:11}},
+    vAxis:{title:'Amount (BDT)',gridlines:{color:'#eee'}},
+    hAxis:{slantedText:true,slantedTextAngle:40,textStyle:{fontSize:9}}
+  });
+}
+
+function drawDailyA(d){
+  var lz = lastNonZero(d.prevDailyAmount);
+  var N = Math.max(d.mtdDays, lz); if(N<1) N=1;
+  var rows = [['Day', d.prevLabel+' (BDT)', d.currLabel+' (BDT)']];
+  for (var i=0;i<N;i++){
+    rows.push([String(i+1), (i<lz? d.prevDailyAmount[i]:null), (i<d.mtdDays? d.currDailyAmount[i]:null)]);
+  }
+  new google.visualization.LineChart(document.getElementById('c-daily-a')).draw(google.visualization.arrayToDataTable(rows), {
+    colors:[COL_PREV, COL_CUR2], lineWidth:2, pointSize:4,
+    legend:{position:'top',textStyle:{fontSize:11}},
+    vAxis:{title:'Amount (BDT)',gridlines:{color:'#eee'}},
+    hAxis:{title:'Day of month',textStyle:{fontSize:10}},
+    chartArea:{left:80,right:30,top:45,width:'83%',height:'72%'}
+  });
+}
+
+/* Reason Pareto: bar (hours) + cumulative % line */
+function drawReasonPareto(d){
+  var el = document.getElementById('c-reason');
+  var curr = viewMonth==='curr';
+  var rp = (curr? d.reasonPareto : d.reasonParetoPrev) || [];
+  document.getElementById('rp-h').textContent = '🎯 OT Reason Pareto — ' + (curr? d.currLabel : d.prevLabel) + ' (Root Cause)';
+  if(!rp.length){ el.innerHTML='<p style="text-align:center;color:#999;padding:40px">Reason data not available for this month</p>'; return; }
+  var total = rp.reduce(function(s,x){return s+x.hours;},0);
+  var rows = [['Reason','OT Hrs','Cumulative %']];
+  var cum = 0;
+  rp.forEach(function(x){
+    cum += x.hours;
+    rows.push([x.cat, x.hours, (total? cum/total*100 : 0)]);
+  });
+  new google.visualization.ComboChart(el).draw(google.visualization.arrayToDataTable(rows), {
+    seriesType:'bars',
+    series:{0:{targetAxisIndex:0,color:'#c62828'},1:{targetAxisIndex:1,type:'line',color:COL_CUM,lineWidth:3,pointSize:5}},
+    vAxes:{0:{title:'OT (hrs)',gridlines:{color:'#eee'}},1:{title:'Cumulative %',maxValue:100,gridlines:{color:'transparent'},textStyle:{color:COL_CUM}}},
+    legend:{position:'top',textStyle:{fontSize:11}},
+    bar:{groupWidth:'60%'},
+    hAxis:{slantedText:true,slantedTextAngle:35,textStyle:{fontSize:9}},
+    chartArea:{left:60,right:70,top:45,width:'78%',height:'68%'}
+  });
+}
+
+/* Section Pareto 80/20 */
+function drawSectionPareto(d){
+  var el = document.getElementById('c-pareto');
+  var total = d.rows.reduce(function(s,r){return s+r.ch;},0);
+  if(!d.rows.length || total<=0){ el.innerHTML='<p style="text-align:center;color:#999;padding:40px">No data</p>'; return; }
+  var rows = [['Section','OT Hrs','Cumulative %']];
+  var cum = 0;
+  d.rows.forEach(function(r){
+    cum += r.ch;
+    rows.push([r.name, r.ch, cum/total*100]);
+  });
+  new google.visualization.ComboChart(el).draw(google.visualization.arrayToDataTable(rows), {
+    seriesType:'bars',
+    series:{0:{targetAxisIndex:0,color:'#1565c0'},1:{targetAxisIndex:1,type:'line',color:COL_CUM,lineWidth:3,pointSize:5}},
+    vAxes:{0:{title:'OT (hrs)',gridlines:{color:'#eee'}},1:{title:'Cumulative %',maxValue:100,gridlines:{color:'transparent'},textStyle:{color:COL_CUM}}},
+    legend:{position:'top',textStyle:{fontSize:11}},
+    bar:{groupWidth:'60%'},
+    hAxis:{slantedText:true,slantedTextAngle:35,textStyle:{fontSize:9}},
+    chartArea:{left:60,right:70,top:45,width:'78%',height:'68%'}
+  });
+}
+
+/* Daily metric per MT (cost or hours) — Sep vs Oct */
+function drawPerMt(d, elId, currTotal, prevTotal, unit, color){
+  var el = document.getElementById(elId);
+  var lz = lastNonZero(d.prevDailyHours);
+  var N = Math.max(d.mtdDays, lz); if(N<1) N=1;
+  var rows = [['Day', d.prevLabel, d.currLabel]];
+  for (var i=0;i<N;i++){
+    var pv = (i<lz && d.prodPrev[i]>0) ? (unit.indexOf('৳')>=0 ? d.prevDailyAmount[i]/d.prodPrev[i] : d.prevDailyHours[i]/d.prodPrev[i]) : null;
+    var cv = (i<d.mtdDays && d.prodCurr[i]>0) ? (unit.indexOf('৳')>=0 ? d.currDailyAmount[i]/d.prodCurr[i] : d.currDailyHours[i]/d.prodCurr[i]) : null;
+    rows.push([String(i+1), pv, cv]);
+  }
+  new google.visualization.LineChart(el).draw(google.visualization.arrayToDataTable(rows), {
+    colors:[COL_PREV, color], lineWidth:2, pointSize:4,
+    legend:{position:'top',textStyle:{fontSize:11}},
+    vAxis:{title:unit,gridlines:{color:'#eee'}},
+    hAxis:{title:'Day of month',textStyle:{fontSize:10}},
+    chartArea:{left:70,right:30,top:45,width:'80%',height:'70%'}
+  });
+}
+
+function setView(m){
+  viewMonth = m;
+  document.getElementById('btn-prev').className = (m==='prev')?'active':'';
+  document.getElementById('btn-curr').className = (m==='curr')?'active':'';
+  if (dGlobal){ drawCombo(dGlobal); drawStacked(dGlobal); drawReasonPareto(dGlobal); }
+}
+
+function drawCombo(d){
+  var curr = viewMonth==='curr';
+  var prod = curr? d.prodCurr : d.prodPrev;
+  var ot   = curr? d.currDailyHours : d.prevDailyHours;
+  var N = curr? d.mtdDays : lastNonZero(d.prevDailyHours); if(N<1) N=1;
+  var rows = [['Day','Production (MT)','OT (hrs)']];
+  for (var i=0;i<N;i++) rows.push([String(i+1), prod[i]||0, ot[i]||0]);
+  document.getElementById('combo-h').textContent = '📈 OT vs Production Input (MT) — ' + (curr? d.currLabel : d.prevLabel);
+  new google.visualization.ComboChart(document.getElementById('c-combo')).draw(google.visualization.arrayToDataTable(rows), {
+    seriesType:'bars',
+    series:{0:{targetAxisIndex:0,color:'#1565c0'},1:{targetAxisIndex:1,type:'line',color:COL_CUR,lineWidth:2,pointSize:4}},
+    vAxes:{0:{title:'Production (MT)',gridlines:{color:'#eee'}},1:{title:'OT (hrs)',gridlines:{color:'transparent'},textStyle:{color:COL_CUR}}},
+    legend:{position:'top',textStyle:{fontSize:12}},
+    bar:{groupWidth:'65%'},
+    hAxis:{title:'Day of month',textStyle:{fontSize:10}},
+    chartArea:{left:70,right:80,top:45,width:'80%',height:'72%'}
+  });
+}
+
+function drawStacked(d){
+  var curr = viewMonth==='curr';
+  var N = curr? d.mtdDays : lastNonZero(d.prevDailyHours); if(N<1) N=1;
+  var secList = d.rows.filter(function(r){ return (curr? r.ch : r.ph)>0; }).map(function(r){ return r.name; });
+  document.getElementById('stack-h').textContent = '📊 Daily OT by Section (Stacked) — ' + (curr? d.currLabel : d.prevLabel);
+  var el = document.getElementById('c-stacked');
+  if(!secList.length){ el.innerHTML='<p style="text-align:center;color:#999;padding:40px">No data</p>'; return; }
+  var table = [['Day'].concat(secList)];
+  for (var i=0;i<N;i++){
+    var row = [String(i+1)];
+    secList.forEach(function(name){
+      var r = d.rows.filter(function(x){ return x.name===name; })[0];
+      row.push(curr? (r.cdh[i]||0) : (r.pdh[i]||0));
+    });
+    table.push(row);
+  }
+  new google.visualization.ColumnChart(el).draw(google.visualization.arrayToDataTable(table), {
+    isStacked:true, bar:{groupWidth:'80%'},
+    legend:{position:'top',textStyle:{fontSize:10}},
+    colors:STACK_COLORS,
+    vAxis:{title:'OT (hrs)',gridlines:{color:'#eee'}},
+    hAxis:{slantedText:true,slantedTextAngle:45,textStyle:{fontSize:9}},
+    chartArea:{left:60,right:20,top:50,width:'88%',height:'68%'}
+  });
+}
+
+function drawPies(d){
+  var rh=[['Section','Hrs']], ra=[['Section','BDT']];
+  d.rows.forEach(function(r){ if(r.ch>0) rh.push([r.name,r.ch]); if(r.ca>0) ra.push([r.name,r.ca]); });
+  new google.visualization.PieChart(document.getElementById('c-pie-h')).draw(google.visualization.arrayToDataTable(rh), {pieHole:0.45,colors:STACK_COLORS,legend:{position:'right',textStyle:{fontSize:10}},chartArea:{left:10,top:10,width:'85%',height:'85%'}});
+  new google.visualization.PieChart(document.getElementById('c-pie-a')).draw(google.visualization.arrayToDataTable(ra), {pieHole:0.45,colors:STACK_COLORS,legend:{position:'right',textStyle:{fontSize:10}},chartArea:{left:10,top:10,width:'85%',height:'85%'}});
+}
+
+function deltaTxt(cur, prev){
+  if(!prev) return '<span class="flat">new</span>';
+  var p = (cur-prev)/prev*100;
+  return '<span class="'+momClass(p)+'">'+pct(p)+'</span>';
+}
+
+function drawTable(d){
+  var tbody = document.getElementById('sec-table');
+  tbody.innerHTML = '';
+  d.rows.forEach(function(r,i){
+    var pctH = d.totals.currH ? (r.ch/d.totals.currH*100) : 0;
+    var tag = pctH>20?'tag-red':pctH>10?'tag-orange':'tag-green';
+    var tagTxt = pctH>20?'⚠ HIGH':pctH>10?'↗ MED':'✓ OK';
+    tbody.innerHTML += '<tr><td>'+(i+1)+'</td><td>'+r.name+'</td>'+
+      '<td>'+n0(r.ph)+'</td><td>'+n0(r.ch)+'</td><td>'+deltaTxt(r.ch,r.ph)+'</td>'+
+      '<td>'+n0(r.pa)+'</td><td>'+n0(r.ca)+'</td><td>'+deltaTxt(r.ca,r.pa)+'</td>'+
+      '<td><span class="tag '+tag+'">'+tagTxt+'</span></td></tr>';
+  });
+  tbody.innerHTML += '<tr style="font-weight:800;background:#eef3fa"><td></td><td>TOTAL</td>'+
+    '<td>'+n0(d.totals.prevH)+'</td><td>'+n0(d.totals.currH)+'</td><td>'+deltaTxt(d.totals.currH,d.totals.prevH)+'</td>'+
+    '<td>'+n0(d.totals.prevA)+'</td><td>'+n0(d.totals.currA)+'</td><td>'+deltaTxt(d.totals.currA,d.totals.prevA)+'</td><td></td></tr>';
+}
+</script>
+</body>
+</html>
