@@ -183,7 +183,7 @@ var COL_CUR  = '#e53935';
 var COL_CUR2 = '#1565c0';
 var COL_CUM  = '#ff8f00';
 var STACK_COLORS = ['#1e3a5f','#1565c0','#1e88e5','#42a5f5','#90caf9','#bbdefb','#ffca28','#ff8a65','#ef5350','#ab47bc','#26a69a','#66bb6a','#8d6e63','#78909c','#e3f2fd'];
-var AUTO_MS = 5*60*1000;
+var AUTO_MS = 60*1000;
 
 /* ============================================================
  *  API CONFIG — GitHub Pages e host korle ekhane /exec URL bosao
@@ -278,7 +278,7 @@ function render(d){
     : 'production data pending';
 
   document.getElementById('badge-date').textContent = d.currLabel + ' • Updated: ' + d.updated;
-  document.getElementById('footer-updated').textContent = 'Auto-refresh every 5 min  |  Last refreshed: ' + d.updated;
+  document.getElementById('footer-updated').textContent = 'Auto-refresh every 1 min  |  Last refreshed: ' + d.updated;
   document.getElementById('cmp-h').textContent = '📊 Month-on-Month — Daily Total OT Hours (' + d.prevLabel + ' vs ' + d.currLabel + ')';
   document.getElementById('view-note').textContent = 'Current = ' + d.currLabel + ' (MTD ' + d.mtdDays + 'd)';
   var cLbls = document.querySelectorAll('.cur-lbl');

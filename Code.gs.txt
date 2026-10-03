@@ -47,6 +47,11 @@ const CONFIG = {
 /** GitHub Pages theke data pull korar jonno optional key (khali = open) */
 const DASH_KEY = "mushfiqur@03";
 
+/* ---- Performance: cache so repeated loads are instant ---- */
+const CACHE_KEY = "ot_dashboard_v1";   // main data cache key
+const CACHE_TTL = 600;                 // 10 min
+const SCAN_TTL  = 1800;                // 30 min (heavy detail scan)
+
 /** Web app entry point + JSON/JSONP API
  *  - Normal URL           -> HTML dashboard (Apps Script web app)
  *  - URL?data=1           -> raw JSON
@@ -56,6 +61,7 @@ function doGet(e) {
   var p = (e && e.parameter) ? e.parameter : {};
   if (p.data === "1") {
     if (DASH_KEY && p.key !== DASH_KEY) return out_(p.callback, { error: "Unauthorized" });
+    if (p.nocache === "1") { try { CacheService.getScriptCache().remove(CACHE_KEY); } catch (e) {} }
     var payload;
     try { payload = getOTData(); } catch (err) { payload = { error: String(err) }; }
     return out_(p.callback, payload);
@@ -294,8 +300,77 @@ function scanDetails(ss, monthStarts, sectionSet) {
   });
 }
 
-/** Main — dashboard ke data dey */
+/** Detail scan with its own longer cache */
+function getScanCached_(ss, monthStarts, sectionSet, keySuffix) {
+  var cache = CacheService.getScriptCache();
+  var key = "otscan_" + String(keySuffix).replace(/[^A-Za-z0-9_]/g, "");
+  var hit = cache.get(key);
+  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+  var res = scanDetails(ss, monthStarts, sectionSet);
+  try {
+    var s = JSON.stringify(res);
+    if (s.length < 100000) cache.put(key, s, SCAN_TTL);
+  } catch (e) {}
+  return res;
+}
+
+/** Fast entry — cache theke dey, na thakle compute kore cache kore */
 function getOTData() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(CACHE_KEY);
+  if (cached) { try { return JSON.parse(cached); } catch (e) {} }
+  return computeAndCache_();
+}
+
+/** Heavy compute + cache store */
+function computeAndCache_() {
+  var result = computeOTData_();
+  if (result && !result.error) {
+    try {
+      var s = JSON.stringify(result);
+      if (s.length < 100000) CacheService.getScriptCache().put(CACHE_KEY, s, CACHE_TTL);
+    } catch (e) {}
+  }
+  return result;
+}
+
+/** Cache prewarm — time-driven trigger ei function ke call korbe */
+function refreshOTCache() {
+  try { CacheService.getScriptCache().remove(CACHE_KEY); } catch (e) {}
+  return computeAndCache_();
+}
+
+/** Sheet EDIT holei chalbe (installable ON_EDIT trigger) — cache auto-update */
+function onSheetEdit(e) {
+  var cache = CacheService.getScriptCache();
+  // 1) purono cache sathe sathe invalidate -> dashboard fresh data pabe
+  try { cache.remove(CACHE_KEY); } catch (err) {}
+  // 2) debounce: 12 second er moddhe arekbar prewarm na (burst edit handle)
+  var last = cache.get("ot_prewarm_ts");
+  var now = Date.now();
+  if (last && (now - Number(last)) < 12000) return;
+  cache.put("ot_prewarm_ts", String(now), 60);
+  // 3) notun data diye cache prewarm
+  try { computeAndCache_(); } catch (err) {}
+}
+
+/** EKBAR run koro -> 5-min time trigger baad, EDIT trigger active hobe
+ *  (kono edit holoi cache nijei update hoy = dashboard always fresh) */
+function setupEditTrigger() {
+  // purono shob trigger (time + edit) muchhe felbo
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    var f = t.getHandlerFunction();
+    if (f === "refreshOTCache" || f === "onSheetEdit") ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger("onSheetEdit")
+    .forSpreadsheet(CONFIG.SHEET_ID)
+    .onEdit()
+    .create();
+  return "Edit trigger set: cache updates on every sheet edit";
+}
+
+/** Heavy compute (summary + production + reason scan) */
+function computeOTData_() {
   try {
     var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
     var pair = pickTabs(ss);
@@ -404,7 +479,7 @@ function getOTData() {
     var scans = [{ reasons: [], employees: 0 }, { reasons: [], employees: 0 }];
     try {
       var monthStarts = prev ? [curr.monthStart, prev.monthStart] : [curr.monthStart];
-      scans = scanDetails(ss, monthStarts, sectionSet);
+      scans = getScanCached_(ss, monthStarts, sectionSet, curr.label + "_" + (prev ? prev.label : "na"));
     } catch (e) { /* scan fail hole dashboard cholbe */ }
     var scan = scans[0];
     var empCount = scan.employees;
