@@ -210,23 +210,41 @@ var API_KEY = "mushfiqur@03";
 
 function fetchData(onOk, onErr){
   onErr = onErr || function(e){ onOk({error:(e&&e.message)||"load failed"}); };
+  // Apps Script web app er bhitore -> same-origin
   if (window.google && google.script && google.script.run){
     google.script.run.withSuccessHandler(onOk).withFailureHandler(onErr).getOTData();
     return;
   }
-  if (!API_URL){ onErr({message:"API_URL set kora hoy nai (GitHub Pages mode)."}); return; }
+  if (!API_URL){ onErr({message:"Data source not configured."}); return; }
+  var url = API_URL + (API_URL.indexOf("?")>=0?"&":"?") + "data=1" +
+            (API_KEY ? ("&key="+encodeURIComponent(API_KEY)) : "");
+  // 1) Primary: fetch (CORS) — mobile e JSONP theke onek reliable
+  if (window.fetch){
+    var ctrl = window.AbortController ? new AbortController() : null;
+    var to = ctrl ? setTimeout(function(){ try{ctrl.abort();}catch(_){} }, 45000) : null;
+    fetch(url, ctrl ? {signal:ctrl.signal} : {})
+      .then(function(r){ return r.json(); })
+      .then(function(data){ if(to) clearTimeout(to); onOk(data); })
+      .catch(function(){ if(to) clearTimeout(to); jsonpFetch(url, onOk, onErr); });
+    return;
+  }
+  // 2) Fallback: JSONP
+  jsonpFetch(url, onOk, onErr);
+}
+
+function jsonpFetch(url, onOk, onErr){
   var cbName = "otcb_" + Math.floor(Math.random()*1e9);
-  var sc;
+  var sc, done = false;
+  var timer = setTimeout(function(){ if(!done){ done = true; onErr({message:"Data load timeout."}); } }, 45000);
   window[cbName] = function(data){
+    done = true; clearTimeout(timer);
     try { onOk(data); } finally {
       try { delete window[cbName]; if (sc && sc.parentNode) sc.parentNode.removeChild(sc); } catch(_){}
     }
   };
   sc = document.createElement("script");
-  sc.src = API_URL + (API_URL.indexOf("?")>=0?"&":"?") + "data=1" +
-           (API_KEY ? ("&key="+encodeURIComponent(API_KEY)) : "") +
-           "&callback=" + cbName;
-  sc.onerror = function(){ onErr({message:"Data load failed — API_URL check koro."}); };
+  sc.src = url + "&callback=" + cbName;
+  sc.onerror = function(){ if(!done){ done = true; clearTimeout(timer); onErr({message:"Data load failed."}); } };
   document.body.appendChild(sc);
 }
 
