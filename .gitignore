@@ -1,0 +1,9 @@
+# Never publish documents / drafts
+*.docx
+*.doc
+*.pdf
+*.xlsx
+*.csv
+*.pptx
+Thumbs.db
+desktop.ini
