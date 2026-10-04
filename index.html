@@ -409,11 +409,16 @@ function drawReasonPareto(d){
 
 function drawSectionPareto(d){
   var el = document.getElementById('c-pareto');
-  var total = d.rows.reduce(function(s,r){return s+r.ch;},0);
-  if(!d.rows.length || total<=0){ el.innerHTML='<p style="text-align:center;color:#5f6d82;padding:40px">No data</p>'; return; }
+  var curr = viewMonth==='curr';
+  document.getElementById('sp-h').textContent = '📉 Section Pareto 80/20 — ' + (curr? d.currLabel : d.prevLabel) + ' OT Hours';
+  var list = d.rows.map(function(r){ return { name:r.name, h: (curr? r.ch : r.ph) }; })
+                   .filter(function(x){ return x.h>0; })
+                   .sort(function(a,b){ return b.h-a.h; });
+  var total = list.reduce(function(s,x){ return s+x.h; },0);
+  if(!list.length || total<=0){ el.innerHTML='<p style="text-align:center;color:#5f6d82;padding:40px">No data for this month</p>'; return; }
   var rows = [['Section','OT Hrs','Cumulative %']];
   var cum = 0;
-  d.rows.forEach(function(r){ cum += r.ch; rows.push([r.name, r.ch, cum/total*100]); });
+  list.forEach(function(x){ cum += x.h; rows.push([x.name, x.h, cum/total*100]); });
   var o = base();
   o.seriesType='bars';
   o.series={0:{targetAxisIndex:0,color:'#58a6ff'},1:{targetAxisIndex:1,type:'line',color:COL_CUM,lineWidth:3,pointSize:5}};
@@ -443,7 +448,7 @@ function setView(m){
   viewMonth = m;
   document.getElementById('btn-prev').className = (m==='prev')?'active':'';
   document.getElementById('btn-curr').className = (m==='curr')?'active':'';
-  if (dGlobal){ drawCombo(dGlobal); drawStacked(dGlobal); drawReasonPareto(dGlobal); }
+  if (dGlobal){ drawCombo(dGlobal); drawStacked(dGlobal); drawReasonPareto(dGlobal); drawSectionPareto(dGlobal); }
 }
 
 function drawCombo(d){
